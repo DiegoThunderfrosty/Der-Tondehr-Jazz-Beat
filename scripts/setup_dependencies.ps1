@@ -33,12 +33,28 @@ if ($LASTEXITCODE -ne 0) { throw 'Could not fetch the required iPlug2 revision.'
 if ($LASTEXITCODE -ne 0) { throw 'Could not select the required iPlug2 revision.' }
 
 $vstPath = Join-Path $Destination 'Dependencies\IPlug\VST3_SDK'
+if ((Test-Path -LiteralPath $vstPath) -and
+    -not (Test-Path -LiteralPath (Join-Path $vstPath '.git'))) {
+  # The pinned iPlug2 revision ships this directory with a README placeholder.
+  # Replace only that known placeholder; never delete an unknown local SDK.
+  $entries = @(Get-ChildItem -LiteralPath $vstPath -Force)
+  $unexpectedEntries = @($entries | Where-Object { $_.Name -notin @('README.md', '.gitkeep') })
+  if ($unexpectedEntries.Count -gt 0) {
+    $unexpectedNames = ($unexpectedEntries | Select-Object -ExpandProperty Name) -join ', '
+    throw "The SDK destination is not a Git checkout and contains unknown files ($unexpectedNames): $vstPath"
+  }
+  foreach ($entry in $entries) {
+    Remove-Item -LiteralPath $entry.FullName -Force
+  }
+  Remove-Item -LiteralPath $vstPath -Force
+}
+
 if (-not (Test-Path -LiteralPath $vstPath)) {
   & $git.Source clone --recursive $vstRepository $vstPath
   if ($LASTEXITCODE -ne 0) { throw 'Could not clone the VST3 SDK.' }
 }
 if (-not (Test-Path -LiteralPath (Join-Path $vstPath '.git'))) {
-  throw "The SDK destination exists but is not a Git checkout: $vstPath"
+  throw "The VST3 SDK clone did not create a Git checkout: $vstPath"
 }
 
 & $git.Source -C $vstPath fetch --depth 1 origin $vstRevision

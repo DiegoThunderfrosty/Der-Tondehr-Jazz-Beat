@@ -15,6 +15,6 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-ci -A x64 -DIPLUG2_DIR=${{ github.workspace }}/external/iPlug2 -DBUILD_TESTING=ON -DIPLUG_DEPLOY_PLUGINS=OFF
       - name: Build tests
-        run: cmake --build build-ci --config Release --target DerTondehrDSPTests
+        run: cmake --build build-ci --config Release --target DerTondehrDSPTests jazzbeat_volume_network_tests jazzbeat_tone_network_tests jazzbeat_preset_format_tests
       - name: Test
         run: ctest --test-dir build-ci -C Release --output-on-failure

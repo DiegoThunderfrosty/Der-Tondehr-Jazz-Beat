@@ -51,7 +51,7 @@ int main()
       const double t = static_cast<double>(i) / sampleRate;
       const double impulse = i == 0 ? 0.2 : 0.0;
       const double input = impulse + 0.018 * std::sin(2.0 * dtjb::dsp::kPi * 220.0 * t);
-      const auto output = chain.process(input, input);
+      const auto output = chain.process(input);
       assert(std::isfinite(output.left));
       assert(std::isfinite(output.right));
       peak = std::max(peak, std::max(std::abs(output.left), std::abs(output.right)));
@@ -64,9 +64,9 @@ int main()
               << " stereoDifference=" << stereoDifference << '\n';
   }
 
-  // The service schematic uses a passive Fender-style tone stack, not three
-  // nearly-flat independent EQ bands. Verify that the reconstructed network
-  // has the expected large, interactive control ranges.
+  // The service schematic uses one interactive passive network, not three
+  // independent EQ bands. The VR4 wiper is the tone-stack output and reaches
+  // the isolated VR2 top through R42; the C51/VR5 node remains a shunt node.
   {
     constexpr double sampleRate = 48000.0;
     auto measureToneDb = [sampleRate](double frequency, double bass, double middle, double treble)
@@ -101,17 +101,74 @@ int main()
 
     const double midMin400 = measureToneDb(400.0, 0.5, 0.0, 0.5);
     const double midMax400 = measureToneDb(400.0, 0.5, 1.0, 0.5);
-    assert(midMax400 - midMin400 > 7.0);
+    assert(midMax400 - midMin400 > 5.0);
 
     const double trebleMin4000 = measureToneDb(4000.0, 0.5, 0.5, 0.0);
     const double trebleMax4000 = measureToneDb(4000.0, 0.5, 0.5, 1.0);
     assert(trebleMax4000 - trebleMin4000 > 15.0);
   }
 
+  // VR2 is a real 1 M B volume divider. The fixed 100 kOhm R42 feeds the
+  // TOP of VR2; only C42+VR3 reaches the wiper. This regression test prevents
+  // the old broadband-wiper bypass from returning: raising Volume must clearly
+  // raise the midband level while the bright-bypass contribution becomes less
+  // dominant, so the amp can become relatively darker at higher Volume.
+  {
+    constexpr double sampleRate = 48000.0;
+    auto measureVolumeDb = [sampleRate](double frequency, double volume)
+    {
+      dtjb::dsp::ToneNetworkStage tone;
+      tone.prepare(sampleRate);
+      tone.setControls(0.5, 0.5, 0.5, 0.0, volume);
+
+      double sumSquares = 0.0;
+      int count = 0;
+      const int total = static_cast<int>(sampleRate * 2.0);
+      for(int i = 0; i < total; ++i)
+      {
+        const double x = 0.1 * std::sin(2.0 * dtjb::dsp::kPi * frequency * static_cast<double>(i) / sampleRate);
+        const double y = tone.process(x);
+        assert(std::isfinite(y));
+        if(i > total / 2)
+        {
+          sumSquares += y * y;
+          ++count;
+        }
+      }
+
+      const double outputRms = std::sqrt(sumSquares / static_cast<double>(count));
+      const double inputRms = 0.1 / std::sqrt(2.0);
+      return 20.0 * std::log10(std::max(1.0e-12, outputRms / inputRms));
+    };
+
+    const double v0 = measureVolumeDb(1000.0, 0.0);
+    const double v10 = measureVolumeDb(1000.0, 0.10);
+    const double v25 = measureVolumeDb(1000.0, 0.25);
+    const double v50 = measureVolumeDb(1000.0, 0.50);
+    const double v75 = measureVolumeDb(1000.0, 0.75);
+    const double v100 = measureVolumeDb(1000.0, 1.0);
+
+    std::cerr << "volume 1kHz [0/1/2.5/5/7.5/10]="
+              << v0 << '/' << v10 << '/' << v25 << '/'
+              << v50 << '/' << v75 << '/' << v100 << " dB" << std::endl;
+
+    assert(v0 < -100.0);
+    assert(v10 < v25 && v25 < v50 && v50 < v75 && v75 < v100);
+    assert(v100 - v50 > 4.0);
+    assert(v100 - v10 > 12.0);
+
+    const double tiltLowVolume = measureVolumeDb(8000.0, 0.25) - measureVolumeDb(1000.0, 0.25);
+    const double tiltHighVolume = measureVolumeDb(8000.0, 1.0) - measureVolumeDb(1000.0, 1.0);
+    std::cerr << "volume spectral tilt 8k-1k: low=" << tiltLowVolume
+              << "dB high=" << tiltHighVolume << "dB" << std::endl;
+    assert(std::abs(tiltLowVolume - tiltHighVolume) < 1.5);
+  }
+
   // VR3 (HI-TREBLE) is a 1 M B rheostat in series with C42 (470 pF),
-  // creating a progressive high-frequency bypass around R92 (100 k). The
-  // circuit response is perceptually calibrated so the full knob travel is
-  // useful while the bass remains essentially unchanged.
+  // creating a progressive high-frequency bypass from the VR4 wiper directly
+  // to the VR2 wiper. R42 (100 kOhm) instead feeds the TOP of VR2. The circuit
+  // itself now provides the intended action, so no extra digital treble shelf
+  // is required.
   {
     constexpr double sampleRate = 48000.0;
     auto measure = [sampleRate](double frequency, double hiTreble)
@@ -156,10 +213,10 @@ int main()
               << quarterDeltaDb << '/' << midDeltaDb << '/'
               << threeQuarterDeltaDb << '/' << highDeltaDb << "dB" << std::endl;
     assert(std::abs(lowDeltaDb) < 0.5);
-    assert(highDeltaDb > 8.0);
+    assert(highDeltaDb > 4.0);
     assert(highOff < highQuarter && highQuarter < highMid);
     assert(highMid < highThreeQuarter && highThreeQuarter < highMax);
-    assert(midDeltaDb > 5.0);
+    assert(midDeltaDb > 2.0);
   }
 
   // Verify the corrected VR2-wiper topology survives the complete signal path
@@ -188,7 +245,7 @@ int main()
       for(int i = 0; i < total; ++i)
       {
         const double x = 0.005 * std::sin(2.0 * dtjb::dsp::kPi * frequency * static_cast<double>(i) / sampleRate);
-        const auto y = chain.process(x, x);
+        const auto y = chain.process(x);
         if(i > total / 2)
         {
           sumSquares += y.left * y.left;
@@ -205,10 +262,10 @@ int main()
     std::cerr << "hiTreble full path: 200Hz=" << lowDeltaDb
               << "dB, 4/8/12kHz=" << presenceDeltaDb << '/'
               << highDeltaDb << '/' << airDeltaDb << "dB" << std::endl;
-    assert(std::abs(lowDeltaDb) < 0.25);
-    assert(presenceDeltaDb > 5.0);
-    assert(highDeltaDb > 8.0);
-    assert(airDeltaDb > 9.0);
+    assert(std::abs(lowDeltaDb) < 0.5);
+    assert(presenceDeltaDb > 3.5);
+    assert(highDeltaDb > 4.0);
+    assert(airDeltaDb > 4.0);
   }
 
   // First verify the three selectable local-oversampling modes themselves.
@@ -263,9 +320,9 @@ int main()
     {
       const double t = static_cast<double>(i) / sampleRate;
       const double input = 0.0005 * std::sin(2.0 * dtjb::dsp::kPi * 997.0 * t);
-      const auto y1 = x1->process(input, input);
-      const auto y2 = x2->process(input, input);
-      const auto y4 = x4->process(input, input);
+      const auto y1 = x1->process(input);
+      const auto y2 = x2->process(input);
+      const auto y4 = x4->process(input);
       cleanDifference += std::abs(y1.left - y2.left) + std::abs(y2.left - y4.left);
     }
     std::cerr << "oversampling normal-level difference=" << cleanDifference << std::endl;
@@ -306,9 +363,9 @@ int main()
       const double t = static_cast<double>(i) / sampleRate;
       const double input = 0.12 * std::sin(2.0 * dtjb::dsp::kPi * 997.0 * t) +
                            0.04 * std::sin(2.0 * dtjb::dsp::kPi * 9100.0 * t);
-      const auto y1 = x1->process(input, input);
-      const auto y2 = x2->process(input, input);
-      const auto y4 = x4->process(input, input);
+      const auto y1 = x1->process(input);
+      const auto y2 = x2->process(input);
+      const auto y4 = x4->process(input);
       difference12 += std::abs(y1.left - y2.left);
       difference24 += std::abs(y2.left - y4.left);
     }
@@ -345,9 +402,9 @@ int main()
     {
       const double t = static_cast<double>(i) / sampleRate;
       const double input = 0.012 * std::sin(2.0 * dtjb::dsp::kPi * 330.0 * t);
-      const auto unityOut = unity->process(input, input);
-      const auto cutOut = cut->process(input, input);
-      const auto boostOut = boost->process(input, input);
+      const auto unityOut = unity->process(input);
+      const auto cutOut = cut->process(input);
+      const auto boostOut = boost->process(input);
 
       if(i > static_cast<int>(sampleRate * 0.4) && std::abs(unityOut.left) > 1.0e-7)
       {
@@ -384,15 +441,14 @@ int main()
         chain->setParameters(p);
 
         for(int i = 0; i < 4096; ++i)
-          chain->process(inputTable[static_cast<std::size_t>(i) & 255U],
-                         inputTable[static_cast<std::size_t>(i) & 255U]);
+          chain->process(inputTable[static_cast<std::size_t>(i) & 255U]);
 
         const auto start = std::chrono::steady_clock::now();
         double sum = 0.0;
         for(int i = 0; i < measuredFrames; ++i)
         {
           const double input = inputTable[static_cast<std::size_t>(i) & 255U];
-          const auto output = chain->process(input, input);
+          const auto output = chain->process(input);
           sum += output.left + output.right;
         }
         const auto end = std::chrono::steady_clock::now();

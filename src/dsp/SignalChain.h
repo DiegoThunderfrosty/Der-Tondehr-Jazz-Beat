@@ -86,11 +86,11 @@ public:
     mOutputGain.setTarget(dbToGain(clamp(parameters.outputTrimDb, -24.0, 12.0)));
   }
 
-  StereoSample process(double inputLeft, double inputRight) noexcept
+  StereoSample process(double monoInput) noexcept
   {
-    // The physical amplifier has a mono front end. Stereo hosts are folded
-    // before the HIGH/LOW input and expanded only by the original chorus route.
-    const double monoInput = 0.5 * (inputLeft + inputRight);
+    // Jazz Beat is a true mono-input/stereo-output amplifier. The host or
+    // standalone audio backend chooses the single physical/input bus channel;
+    // stereo is created only by the original chorus/power-amp routing.
     double signal = mInput.process(monoInput);
     signal = mPreamp.process(signal);
     signal = mDistortion.process(signal);

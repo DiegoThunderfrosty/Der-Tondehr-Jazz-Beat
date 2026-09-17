@@ -2,8 +2,8 @@
 
 #define PLUG_NAME "Der Tondehr Jazz Beat"
 #define PLUG_MFR "Der Tondehr"
-#define PLUG_VERSION_HEX 0x00011800
-#define PLUG_VERSION_STR "0.1.24"
+#define PLUG_VERSION_HEX 0x00011C00
+#define PLUG_VERSION_STR "0.1.28"
 #define PLUG_UNIQUE_ID 'DTJB'
 #define PLUG_MFR_ID 'DTon'
 #define PLUG_URL_STR "https://example.invalid/der-tondehr"
@@ -16,7 +16,14 @@
 #define BUNDLE_DOMAIN "com"
 #define SHARED_RESOURCES_SUBPATH "DerTondehrJazzBeat"
 
-#define PLUG_CHANNEL_IO "1-2 2-2"
+#if defined(APP_API)
+  // Standalone captures the stereo hardware pair selected in Preferences.
+  // MONO IN 1/2 chooses which member feeds Jazz Beat's mono front-end.
+  #define PLUG_CHANNEL_IO "2-2"
+#else
+  // The plug-in presented to a DAW is natively mono-in / stereo-out.
+  #define PLUG_CHANNEL_IO "1-2"
+#endif
 #define PLUG_LATENCY 0
 #define PLUG_TYPE 0
 #define PLUG_DOES_MIDI_IN 0

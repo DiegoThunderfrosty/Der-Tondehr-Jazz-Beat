@@ -40,7 +40,14 @@ $testFlag = if ($SkipTests) { 'OFF' } else { 'ON' }
 if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
 
 $targets = @('DerTondehrJazzBeat-vst3', 'DerTondehrJazzBeat-app')
-if (-not $SkipTests) { $targets += 'DerTondehrDSPTests' }
+if (-not $SkipTests) {
+  $targets += @(
+    'DerTondehrDSPTests',
+    'jazzbeat_volume_network_tests',
+    'jazzbeat_tone_network_tests',
+    'jazzbeat_preset_format_tests'
+  )
+}
 & $cmakePath --build $buildDir --config $Configuration --target $targets --parallel 4
 if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
 

@@ -20,18 +20,19 @@ namespace dtjb::dsp {
  *   VR5  = 10 kOhm B (linear) middle pot, wired as a rheostat to ground
  *   R97  = 1 kOhm in series with the bass rheostat
  *   VR2  = 1 MOhm B (linear) volume potentiometer
- *   R92  = 100 kOhm fixed feed from the VR4 wiper to the VR2 wiper
+ *   R42  = 100 kOhm fixed feed from the VR4 wiper to the isolated TOP of VR2
  *   C42  = 470 pF in series with VR3
- *   VR3  = 1 MOhm B (linear) HI-TREBLE rheostat, in parallel with R92
+ *   VR3  = 1 MOhm B (linear) HI-TREBLE rheostat from VR4 wiper to VR2 wiper
  *   C37  = 82 nF output coupling capacitor
  *   R47  = 1 MOhm load after C37
  *
  * A critical detail in the schematic is that HI-TREBLE is NOT a shelf placed
- * after the tone stack. R92 and C42+VR3 feed the TREBLE wiper directly into
- * the WIPER of VR2. VR2's top terminal is the low/mid tone-stack node. That
- * topology makes the action of VR3 dependent on the Volume setting and is why
- * modelling it as a branch feeding the top of the volume pot makes it appear
- * almost inactive.
+ * after the tone stack. R42 (100 kOhm) feeds the TREBLE wiper into the TOP of
+ * VR2, while only the C42+VR3 branch bypasses that path and lands directly at
+ * the WIPER of VR2. The TOP of VR2 is a separate node from the C51/VR5
+ * middle-shunt node; VR2's bottom terminal is grounded. This is what lets Volume
+ * remain a genuine level control while the bright/HI-TREBLE branch changes its
+ * relative contribution as the Volume setting moves.
  */
 class ToneNetworkStage
 {
@@ -44,7 +45,6 @@ public:
     mMiddleCap.prepare(mSampleRate, 47.0e-9);
     mHiTrebleCap.prepare(mSampleRate, 470.0e-12);
     mVolumeCouplingCap.prepare(mSampleRate, 82.0e-9); // C37
-    mHiTreblePresenceLowPass.prepare(mSampleRate, 3200.0);
     mBass.prepare(mSampleRate, 20.0, 0.5);
     mMiddle.prepare(mSampleRate, 20.0, 0.5);
     mTreble.prepare(mSampleRate, 20.0, 0.5);
@@ -60,7 +60,6 @@ public:
     mMiddleCap.reset();
     mHiTrebleCap.reset();
     mVolumeCouplingCap.reset();
-    mHiTreblePresenceLowPass.reset();
   }
 
   void setControls(double bass,
@@ -84,7 +83,7 @@ public:
     constexpr double kMiddlePot = 10000.0;        // VR5 B
     constexpr double kBassSeriesR = 1000.0;       // R97
     constexpr double kHiTreblePot = 1000000.0;    // VR3 1M B rheostat
-    constexpr double kHiTrebleFeedR = 100000.0;   // R92
+    constexpr double kTrebleToVolumeTopR = 100000.0; // R42
     constexpr double kVolumePot = 1000000.0;      // VR2 1M B
     constexpr double kPostVolumeLoad = 1000000.0; // R47
     constexpr double kMinSegmentR = 1.0;
@@ -109,11 +108,9 @@ public:
     // VR5 is a 10 k B (linear) rheostat to ground.
     const double middleR = std::max(kMinSegmentR, kMiddlePot * middle);
 
-    // VR3 is a 1 M B rheostat. The raw circuit has most of its audible travel
-    // compressed into the final part of the rotation because it works in
-    // parallel with R92 (100 kOhm). Preserve the schematic endpoints while
-    // using a perceptual control law that spreads that useful region across
-    // the knob.
+    // VR3 is a 1 M B rheostat in the C42 bright-bypass branch. Preserve the
+    // schematic endpoints while using a perceptual law that spreads the most
+    // useful part of its rotation across the knob.
     const double hiTrebleLaw = 1.0 - std::pow(1.0 - hiTreble, 2.0);
     const double hiTrebleR = std::max(kMinSegmentR, kHiTreblePot * (1.0 - hiTrebleLaw));
 
@@ -127,10 +124,11 @@ public:
       kSlopeNode = 0,
       kTrebleTop,
       kBassNode,
-      kMiddleNode,       // also VR2 top terminal
-      kTrebleWiper,      // VR4 wiper / HI-TREBLE source
+      kMiddleNode,       // C51 / VR5 low-mid shunt node
+      kTrebleWiper,      // VR4 wiper / tone-stack output / HI-TREBLE source
+      kVolumeTop,        // isolated VR2 top, fed from VR4 wiper through R42
       kHiTrebleCapNode,
-      kVolumeWiper,      // VR2 wiper / R92+VR3 destination
+      kVolumeWiper,      // VR2 wiper / C42+VR3 bright-bypass destination
       kPostCoupling,     // after C37, loaded by R47
       kNodes
     };
@@ -180,20 +178,23 @@ public:
     addBetween(kTrebleTop, kTrebleWiper, 1.0 / trebleTopR);
     addBetween(kTrebleWiper, kBassNode, 1.0 / trebleBottomR);
 
-    // VR6 + R97, then VR5 to ground. The same junction is VR2's top terminal.
+    // VR6 + R97, then VR5 to ground. This is the low/mid shunt branch of
+    // the passive tone stack. Critically, this junction is NOT the top of VR2.
     addBetween(kBassNode, kMiddleNode, 1.0 / bassR);
     addToGround(kMiddleNode, 1.0 / middleR);
 
-    // VR2 volume pot: top terminal is the low/mid tone-stack node, wiper feeds
-    // C37, and bottom terminal is ground.
-    addBetween(kMiddleNode, kVolumeWiper, 1.0 / volumeUpperR);
+    // R42 (100 kOhm) carries the VR4 wiper (the tone-stack output) to an
+    // isolated node at the TOP of VR2. Keeping this separate from the VR5
+    // middle-shunt node restores the intended Bass/Treble interaction.
+    addBetween(kTrebleWiper, kVolumeTop, 1.0 / kTrebleToVolumeTopR);
+
+    // VR2 volume pot: its top is fed only through R42, its wiper feeds C37,
+    // and its bottom terminal is grounded.
+    addBetween(kVolumeTop, kVolumeWiper, 1.0 / volumeUpperR);
     addToGround(kVolumeWiper, 1.0 / volumeLowerR);
 
-    // R92 fixed high-frequency feed from VR4 wiper directly to VR2 wiper.
-    addBetween(kTrebleWiper, kVolumeWiper, 1.0 / kHiTrebleFeedR);
-
-    // C42 + VR3 is in parallel with R92 and lands at the VR2 wiper, not at the
-    // top of VR2. This is the important topology correction for HI-TREBLE.
+    // Only C42 + VR3 bypasses R42/part of VR2 and lands directly at the VR2
+    // wiper. This is the actual HI-TREBLE/bright branch shown in the schematic.
     const double hiTrebleHistory = mHiTrebleCap.history();
     addBetween(kTrebleWiper, kHiTrebleCapNode, mHiTrebleCap.conductance());
     a[kTrebleWiper][kNodes] -= hiTrebleHistory;
@@ -225,17 +226,11 @@ public:
     mHiTrebleCap.update(trebleWiperV - hiTrebleCapV, hiTrebleHistory);
     mVolumeCouplingCap.update(volumeWiperV - postCouplingV, couplingHistory);
 
-    // The literal electrical network changes the complete amplifier path by
-    // only about 0.8 dB at 4 kHz and 1.75 dB at 8 kHz with the controls at
-    // their defaults. Retain that circuit response, then add a deliberately
-    // modest perceptual calibration so the front-panel control remains useful
-    // without turning into a broadband gain control. DC/low frequencies are
-    // unchanged; the extra upper-treble shelf reaches 9 dB at maximum.
-    const double presenceLow = mHiTreblePresenceLowPass.process(postCouplingV);
-    const double presenceHigh = postCouplingV - presenceLow;
-    constexpr double kMaxPresenceGain = 2.8183829312644537; // +9.0 dB
-    const double presenceGain = 1.0 + (kMaxPresenceGain - 1.0) * hiTrebleLaw;
-    return presenceLow + presenceHigh * presenceGain;
+    // With R42 connected to the TOP of VR2, the schematic itself now gives
+    // HI-TREBLE its intended volume-dependent bright-bypass action. Do not add
+    // a second digital shelf here: doing so would keep boosting treble even at
+    // Volume 10, where the real bypass has little differential effect.
+    return postCouplingV;
   }
 
 private:
@@ -328,7 +323,6 @@ private:
 
   double mSampleRate = 48000.0;
   TrapezoidalCapacitor mTrebleCap, mBassCap, mMiddleCap, mHiTrebleCap, mVolumeCouplingCap;
-  OnePoleLowPass mHiTreblePresenceLowPass;
   SmoothedValue mBass, mMiddle, mTreble, mHiTreble, mVolume;
 };
 

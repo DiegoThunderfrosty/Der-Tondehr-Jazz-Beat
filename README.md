@@ -24,6 +24,7 @@ Guitar or DI -> Der Tondehr Jazz Beat -> cabinet/IR loader -> output
 ## Main features
 
 - High/Low input behavior and ±24 dB input trim.
+- True mono input and stereo output topology.
 - Switchable diode-style distortion.
 - Interactive Bass, Middle and Treble network.
 - Continuous Hi-Treble control.
@@ -34,12 +35,15 @@ Guitar or DI -> Der Tondehr Jazz Beat -> cabinet/IR loader -> output
 - −24 dB to +12 dB output trim.
 - One fixed proportional editor size selected from the active monitor and DPI.
 - Shared DSP and editor source for VST3 and Standalone.
+- Product-specific `.dtjbpreset` files with SHA3-256 integrity validation.
+- Hardened Standalone DirectSound, ASIO and WASAPI device handling.
 
 ## Current status
 
-This source package contains version `0.1.24` and targets Windows x64. The
-included automated tests exercise the signal chain, control ranges, editor
-scaling, output trim and oversampling behavior.
+This source package contains version `0.1.28` and targets Windows x64. The
+included automated tests exercise the signal chain, Volume topology, tone
+network, editor scaling, output trim, oversampling, shipped presets and
+Standalone audio policy.
 
 ## Repository contents
 
@@ -47,10 +51,11 @@ scaling, output trim and oversampling behavior.
 Der-Tondehr-Jazz-Beat/
 |-- .github/               Issue, pull-request and CI files
 |-- docs/licenses/         Copies of primary dependency licenses
+|-- presets/               Factory .dtjbpreset files
 |-- resources/             Windows resources
 |-- scripts/               Dependency, build and verification scripts
 |-- src/                   Plugin, DSP and editor source
-|-- tests/                 DSP and scaling tests
+|-- tests/                 DSP, circuit and preset-format tests
 |-- .gitattributes         Text normalization
 |-- .gitignore             Generated/private-file exclusions
 |-- BUILDING.md            Short build guide
@@ -111,6 +116,23 @@ C:\Program Files\Common Files\VST3
 
 Close the audio host before replacing an existing build, then reopen it and
 perform a complete plugin rescan. Keep only one copy in host-scanned folders.
+
+## Included presets
+
+The `presets` directory contains the factory `.dtjbpreset` files distributed
+with this version. Use the plugin's preset browser to select that directory or
+copy it to a location where you keep user presets. The files are validated by
+the automated test suite before release.
+
+The format, integrity checks and stored controls are documented in
+[`docs/PRESET_SYSTEM_DTJBPRESET.md`](docs/PRESET_SYSTEM_DTJBPRESET.md).
+
+## Standalone audio
+
+The Windows Standalone supports a mono hardware input and stereo output using
+DirectSound, ASIO or WASAPI. Driver-specific devices, channels, sample rate and
+buffer settings are handled by the Preferences dialog. Details are documented
+in [`docs/STANDALONE_AUDIO_DRIVERS_0.1.26.md`](docs/STANDALONE_AUDIO_DRIVERS_0.1.26.md).
 
 ## Oversampling scope
 

@@ -7,7 +7,7 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $buildRoot = if ([IO.Path]::IsPathRooted($BuildDirectory)) { $BuildDirectory } else { Join-Path $projectRoot $BuildDirectory }
 $bundle = Join-Path $buildRoot 'out\DerTondehrJazzBeat.vst3'
 $app = Join-Path $buildRoot 'out\DerTondehrJazzBeat.exe'
-$version = '0.1.24'
+$version = '0.1.28'
 $removedTexts = @(
   'CIRCUIT-DERIVED STEREO SOLID-STATE AMPLIFIER',
   '3-SPRING REVERB',

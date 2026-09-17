@@ -1,0 +1,20 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows-tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download pinned dependencies
+        shell: powershell
+        run: .\scripts\setup_dependencies.ps1
+      - name: Configure
+        run: cmake -S . -B build-ci -A x64 -DIPLUG2_DIR=${{ github.workspace }}/external/iPlug2 -DBUILD_TESTING=ON -DIPLUG_DEPLOY_PLUGINS=OFF
+      - name: Build tests
+        run: cmake --build build-ci --config Release --target DerTondehrDSPTests
+      - name: Test
+        run: ctest --test-dir build-ci -C Release --output-on-failure

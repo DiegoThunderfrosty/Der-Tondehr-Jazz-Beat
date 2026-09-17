@@ -1,0 +1,37 @@
+# Generated build output
+/build/
+/build-*/
+**/build/
+/.vs/
+/dist/
+
+# Downloaded dependencies
+/external/
+
+# Compiler and IDE files
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.dll
+*.exe
+*.user
+*.suo
+*.cache
+CMakeUserPresets.json
+
+# Packages, audio and host sessions
+*.zip
+*.7z
+*.wav
+*.aif
+*.aiff
+*.flac
+*.reapeaks
+*.rpp
+*.rpp-bak
+
+# Operating-system files
+Thumbs.db
+.DS_Store
